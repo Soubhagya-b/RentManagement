@@ -110,6 +110,49 @@
         .opacity-40 { opacity: 0.65 !important; }
         .opacity-50 { opacity: 0.75 !important; }
         .opacity-60 { opacity: 0.85 !important; }
+
+        /* Fix native calendar icons in dark mode */
+        .dark input::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(0.9);
+            cursor: pointer;
+        }
+        .dark input::-webkit-calendar-picker-indicator:hover {
+            filter: invert(1) brightness(1.2);
+        }
+
+        /* Premium Professional Card Surface */
+        .premium-card {
+            position: relative;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .dark .premium-card {
+            background: linear-gradient(135deg, rgba(26, 29, 36, 0.95) 0%, rgba(15, 17, 21, 0.98) 100%);
+            box-shadow: 
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+                0 10px 40px -10px rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        html:not(.dark) .premium-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(248, 250, 252, 0.9) 100%);
+            box-shadow: 
+                inset 0 1px 0 0 rgba(255, 255, 255, 1),
+                0 10px 40px -10px rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+        .premium-card:hover {
+            box-shadow: 
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+                0 20px 40px -15px rgba(0, 0, 0, 0.7);
+        }
+        html:not(.dark) .premium-card:hover {
+            box-shadow: 
+                inset 0 1px 0 0 rgba(255, 255, 255, 1),
+                0 20px 40px -15px rgba(0, 0, 0, 0.08);
+        }
     </style>
 </head>
 <body class="bg-light-bg dark:bg-dark-bg text-light-text dark:text-dark-text min-h-screen">
@@ -127,7 +170,7 @@
           Edit2, Save, XCircle, AlertTriangle, ChevronDown, Briefcase,
           ArrowLeft, TrendingUp, TrendingDown, Wallet, Check, ChevronLeft, ChevronRight,
           Landmark, Activity, Map, Eye, EyeOff, LayoutDashboard, Key, Shield, Download, Upload,
-          SlidersHorizontal
+          SlidersHorizontal, Zap, Droplets, Calculator, Receipt, History, ChevronUp, BarChart2
         } from 'https://esm.sh/lucide-react@0.292.0';
 
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
@@ -151,12 +194,12 @@
 
         // console.log(resultString);
         const userFirebaseConfig = {
-        apiKey: resultString,
-        authDomain: "rentmanagement-5e37b.firebaseapp.com",
-        projectId: "rentmanagement-5e37b",
-        storageBucket: "rentmanagement-5e37b.firebasestorage.app",
-        messagingSenderId: "620004929369",
-        appId: "1:620004929369:web:0f758a555e75f9a9f22648"
+            apiKey: resultString,
+            authDomain: "rentmanager-514c3.firebaseapp.com",
+            projectId: "rentmanager-514c3",
+            storageBucket: "rentmanager-514c3.firebasestorage.app",
+            messagingSenderId: "1074759627625",
+            appId: "1:1074759627625:web:d636ce953783756b2303f8"
         };
 
         const firebaseConfig = userFirebaseConfig;
@@ -210,6 +253,10 @@
         // --- UTILS ---
         const formatCurrency = (amount) => {
           return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount || 0);
+        };
+        
+        const formatCurrencyDecimals = (amount) => {
+          return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0);
         };
 
         const formatDate = (dateString) => {
@@ -633,6 +680,332 @@
             );
         };
 
+        const UtilityConsumptionChart = ({ bills, isDark, colorTheme = 'yellow' }) => {
+            const [hoverData, setHoverData] = useState(null);
+            
+            if (!bills || bills.length === 0) {
+                return (
+                    <div className={`p-10 text-center border-2 border-dashed rounded-3xl font-bold ${isDark ? 'border-[#272A30] text-dark-muted' : 'border-[#E5E7EB] text-light-muted'}`}>
+                        No consumption history available. Generate bills to see trends.
+                    </div>
+                );
+            }
+
+            // Get last 12 sorted bills
+            const sortedBills = [...bills]
+                .sort((a, b) => new Date(a.month) - new Date(b.month))
+                .slice(-12);
+
+            const maxConsumption = Math.max(...sortedBills.map(b => Number(b.consumption) || 0));
+            const maxUnits = Math.max(maxConsumption * 1.15, 50); // 15% headroom so tooltips don't clip
+            const height = 240; 
+            const width = 800;
+            const padding = { top: 45, bottom: 30, left: 50, right: 20 }; 
+            const chartW = width - padding.left - padding.right;
+            const chartH = height - padding.top - padding.bottom;
+            
+            const barW = Math.min(40, (chartW / sortedBills.length) * 0.6);
+            const step = chartW / Math.max(sortedBills.length, 1);
+
+            return (
+                <div className="w-full overflow-x-auto pb-4 pt-4">
+                    <div className="min-w-[600px] relative">
+                        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto overflow-visible">
+                            <defs>
+                                <linearGradient id={`barGrad-${colorTheme}`} x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor={colorTheme === 'blue' ? '#3B82F6' : '#EAB308'} stopOpacity="0.8" />
+                                    <stop offset="100%" stopColor={colorTheme === 'blue' ? '#3B82F6' : '#EAB308'} stopOpacity="0.2" />
+                                </linearGradient>
+                            </defs>
+                            
+                            {/* Grid Lines */}
+                            {[0, 0.5, 1].map(t => {
+                                const val = t * maxUnits;
+                                const y = height - padding.bottom - t * chartH;
+                                return (
+                                    <g key={t}>
+                                        <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke={isDark ? "#272A30" : "#E5E7EB"} strokeWidth="1" strokeDasharray="4 4" />
+                                        <text x={padding.left - 10} y={y + 4} textAnchor="end" className={`text-[10px] font-bold ${isDark ? 'fill-dark-muted' : 'fill-light-muted'}`}>
+                                            {colorTheme === 'blue' ? '₹' : ''}{val.toFixed(0)}{colorTheme === 'yellow' ? 'u' : ''}
+                                        </text>
+                                    </g>
+                                );
+                            })}
+                            
+                            {/* Bars */}
+                            {sortedBills.map((b, i) => {
+                                const x = padding.left + (i * step) + (step / 2) - (barW / 2);
+                                const h = (Number(b.consumption) / maxUnits) * chartH;
+                                const y = height - padding.bottom - h;
+                                
+                                return (
+                                    <g key={b.id} className="group" 
+                                        onMouseEnter={() => setHoverData({ x: x + barW/2, y: y - 10, month: b.month, units: b.consumption })}
+                                        onMouseLeave={() => setHoverData(null)}>
+                                        <rect x={x} y={y} width={barW} height={h} rx="4" fill={`url(#barGrad-${colorTheme})`} className="transition-all duration-300 group-hover:opacity-80 cursor-pointer" />
+                                        <text x={x + barW/2} y={height - 10} textAnchor="middle" className={`text-[10px] font-bold uppercase tracking-widest ${isDark ? 'fill-dark-muted' : 'fill-light-muted'}`}>
+                                            {b.month.split(' ')[0].substring(0,3)}
+                                        </text>
+                                    </g>
+                                );
+                            })}
+
+                            {/* Tooltip */}
+                            {hoverData && (
+                                <g transform={`translate(${hoverData.x}, ${hoverData.y})`} className="pointer-events-none transition-all duration-100 ease-out z-50">
+                                    <rect x="-45" y="-35" width="90" height="30" rx="8" fill={isDark ? "#272A30" : "#FFFFFF"} stroke={colorTheme === 'blue' ? '#3B82F6' : '#EAB308'} strokeWidth="2" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.1))" />
+                                    <text x="0" y="-20" textAnchor="middle" className={`text-[10px] font-bold ${isDark ? 'fill-gray-400' : 'fill-gray-500'}`}>{hoverData.month}</text>
+                                    <text x="0" y="-8" textAnchor="middle" className={`text-xs font-black ${colorTheme === 'blue' ? 'fill-blue-500' : 'fill-yellow-500'}`}>{colorTheme === 'blue' ? '₹' : ''}{hoverData.units} {colorTheme === 'yellow' ? 'Units' : ''}</text>
+                                    <polygon points="-6,-5 6,-5 0,1" fill={isDark ? "#272A30" : "#FFFFFF"} stroke={colorTheme === 'blue' ? '#3B82F6' : '#EAB308'} strokeWidth="2" />
+                                    <polygon points="-5,-5 5,-5 0,0" fill={isDark ? "#272A30" : "#FFFFFF"} />
+                                </g>
+                            )}
+                        </svg>
+                    </div>
+                </div>
+            );
+        };
+
+        const DashboardUtilityChart = ({ bills, properties, floors, isDark }) => {
+            const currentYear = new Date().getFullYear();
+            const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+
+            const [selectedProp, setSelectedProp] = useState(properties[0]?.id || '');
+            const [selectedYear, setSelectedYear] = useState(currentYear);
+            const [utilityType, setUtilityType] = useState('electricity');
+            const [metric, setMetric] = useState('costs');
+            const [hoverData, setHoverData] = useState(null);
+            const [hiddenFloors, setHiddenFloors] = useState([]);
+
+            useEffect(() => {
+                if (!selectedProp && properties.length > 0) setSelectedProp(properties[0].id);
+                setHiddenFloors([]); // Reset hidden floors filter when property changes
+            }, [properties, selectedProp]);
+
+            const allActiveFloors = floors.filter(f => f.propertyId === selectedProp).sort((a,b) => a.name.localeCompare(b.name));
+            const visibleFloors = allActiveFloors.filter(f => !hiddenFloors.includes(f.id));
+            
+            const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const fullMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+            const relevantBills = bills.filter(b => b.propertyId === selectedProp && b.type === utilityType);
+
+            const chartData = monthsShort.map((m, index) => {
+                const monthData = { month: m, floors: {} };
+                const expectedMonthStr = `${fullMonths[index]} ${selectedYear}`;
+
+                visibleFloors.forEach(f => {
+                    const bill = relevantBills.find(b => b.floorId === f.id && b.month === expectedMonthStr);
+                    monthData.floors[f.id] = bill ? (metric === 'costs' ? Number(bill.finalBill) : Number(bill.consumption)) : 0;
+                });
+                return monthData;
+            });
+
+            let maxVal = 10;
+            chartData.forEach(d => {
+                Object.values(d.floors).forEach(v => {
+                    if (v > maxVal) maxVal = v;
+                });
+            });
+            maxVal = maxVal * 1.15; // 15% Headroom
+
+            const height = 300;
+            const width = 800;
+            const padding = { top: 20, bottom: 40, left: 60, right: 20 };
+            const chartW = width - padding.left - padding.right;
+            const chartH = height - padding.top - padding.bottom;
+
+            const groupW = chartW / 12;
+            const barPadding = 2;
+            const numFloors = Math.max(visibleFloors.length, 1);
+            const maxBarW = 24;
+            const calculatedBarW = (groupW - (barPadding * (numFloors + 1))) / numFloors;
+            const barW = Math.min(calculatedBarW, maxBarW);
+            const actualGroupW = (barW * numFloors) + (barPadding * (numFloors - 1));
+
+            // Professional color palettes tied to utility type
+            const ELECTRICITY_COLORS = ['#F59E0B', '#F97316', '#EAB308', '#EA580C', '#D97706', '#CA8A04', '#C2410C', '#A16207'];
+            const WATER_COLORS = ['#0EA5E9', '#3B82F6', '#06B6D4', '#2563EB', '#0284C7', '#0891B2', '#1D4ED8', '#0369A1'];
+            const FLOOR_COLORS = utilityType === 'electricity' ? ELECTRICITY_COLORS : WATER_COLORS;
+
+            const getColorForFloor = (floorId) => {
+                const idx = allActiveFloors.findIndex(f => f.id === floorId);
+                return FLOOR_COLORS[idx % FLOOR_COLORS.length];
+            };
+
+            const toggleFloor = (floorId) => {
+                if (hiddenFloors.includes(floorId)) {
+                    setHiddenFloors(hiddenFloors.filter(id => id !== floorId));
+                } else {
+                    setHiddenFloors([...hiddenFloors, floorId]);
+                }
+            };
+
+            const formatAxis = (val) => {
+                if (val === 0) return metric === 'costs' ? '₹0' : '0';
+                if (metric === 'costs') return val >= 1000 ? `₹${(val/1000).toFixed(1)}k` : `₹${Math.round(val)}`;
+                return val >= 1000 ? `${(val/1000).toFixed(1)}k` : Math.round(val);
+            };
+
+            return (
+                <div className="w-full">
+                    {/* Header & Filters */}
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+                        <div className="flex items-center gap-4">
+                            <div className={`p-3 rounded-2xl ${utilityType === 'electricity' ? 'bg-yellow-500/10 text-yellow-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                {utilityType === 'electricity' ? <Zap size={24} strokeWidth={2.5}/> : <Droplets size={24} strokeWidth={2.5}/>}
+                            </div>
+                            <div>
+                                <h3 className="font-black text-xl">Utility Analytics</h3>
+                                <p className="opacity-50 text-xs font-bold uppercase tracking-widest mt-1">Consumption & Cost Tracking</p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Property & Year Selectors */}
+                            <div className={`flex items-center rounded-xl border p-1 ${isDark ? 'border-[#272A30] bg-[#16181D]' : 'border-gray-200 bg-gray-50'}`}>
+                                <select value={selectedProp} onChange={(e) => setSelectedProp(e.target.value)}
+                                    className={`text-xs font-bold bg-transparent outline-none px-3 py-1.5 cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    {properties.length === 0 && <option value="">No Properties</option>}
+                                </select>
+                                <div className={`w-px h-4 mx-1 ${isDark ? 'bg-[#272A30]' : 'bg-gray-300'}`}></div>
+                                <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))}
+                                    className={`text-xs font-bold bg-transparent outline-none px-3 py-1.5 cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Metric Toggle */}
+                            <div className={`flex items-center rounded-xl border p-1 ${isDark ? 'border-[#272A30] bg-[#16181D]' : 'border-gray-200 bg-gray-50'}`}>
+                                <button onClick={() => setMetric('units')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${metric === 'units' ? (isDark ? 'bg-[#272A30] text-white' : 'bg-white shadow-sm text-gray-900') : 'text-gray-500 hover:text-gray-400'}`}>Units</button>
+                                <button onClick={() => setMetric('costs')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${metric === 'costs' ? (isDark ? 'bg-[#272A30] text-white' : 'bg-white shadow-sm text-gray-900') : 'text-gray-500 hover:text-gray-400'}`}>Costs</button>
+                            </div>
+
+                            {/* Utility Type Toggle */}
+                            <div className={`flex items-center rounded-xl border p-1 ${isDark ? 'border-[#272A30] bg-[#16181D]' : 'border-gray-200 bg-gray-50'}`}>
+                                <button onClick={() => setUtilityType('electricity')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${utilityType === 'electricity' ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400' : 'text-gray-500'}`}><Zap size={14}/> Elec</button>
+                                <button onClick={() => setUtilityType('water')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${utilityType === 'water' ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' : 'text-gray-500'}`}><Droplets size={14}/> Water</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Chart Area */}
+                    {allActiveFloors.length === 0 ? (
+                        <div className={`p-10 text-center border-2 border-dashed rounded-3xl font-bold ${isDark ? 'border-[#272A30] text-dark-muted' : 'border-[#E5E7EB] text-light-muted'}`}>
+                            No floors defined for the selected property.
+                        </div>
+                    ) : (
+                        <div className="w-full overflow-x-auto pb-2">
+                            <div className="min-w-[700px] relative">
+                                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto overflow-visible">
+                                    {/* Grid Lines */}
+                                    {[0, 0.25, 0.5, 0.75, 1].map(t => {
+                                        const val = t * maxVal;
+                                        const y = height - padding.bottom - (t * chartH);
+                                        return (
+                                            <g key={t}>
+                                                <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke={isDark ? "#272A30" : "#E5E7EB"} strokeWidth="1" strokeDasharray="4 4" />
+                                                <text x={padding.left - 10} y={y + 4} textAnchor="end" className={`text-[10px] font-bold ${isDark ? 'fill-dark-muted' : 'fill-light-muted'}`}>
+                                                    {formatAxis(val)}
+                                                </text>
+                                            </g>
+                                        );
+                                    })}
+
+                                    {/* Bars */}
+                                    {chartData.map((d, mIdx) => {
+                                        const groupX = padding.left + (mIdx * groupW) + (groupW / 2) - (actualGroupW / 2);
+                                        return (
+                                            <g key={d.month}>
+                                                <text x={padding.left + (mIdx * groupW) + (groupW / 2)} y={height - 15} textAnchor="middle" className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'fill-dark-muted' : 'fill-light-muted'}`}>
+                                                    {d.month}
+                                                </text>
+                                                {visibleFloors.map((f, fIdx) => {
+                                                    const val = d.floors[f.id] || 0;
+                                                    const h = (val / maxVal) * chartH;
+                                                    const x = groupX + (fIdx * (barW + barPadding));
+                                                    const y = height - padding.bottom - h;
+                                                    const color = getColorForFloor(f.id);
+
+                                                    if (val === 0) return null;
+                                                    
+                                                    // Dynamic threshold to flip the tooltip down if the bar is too close to the top edge
+                                                    const isNearTop = y < 50;
+
+                                                    return (
+                                                        <rect key={f.id} x={x} y={y} width={barW} height={h} rx="2" fill={color} fillOpacity="0.85"
+                                                            className="transition-all duration-300 hover:fill-opacity-100 cursor-pointer"
+                                                            onMouseEnter={() => setHoverData({ x: x + barW/2, y: isNearTop ? y + 10 : y - 10, month: d.month, floor: f.name, value: val, color, isFlipped: isNearTop })}
+                                                            onMouseLeave={() => setHoverData(null)}
+                                                        />
+                                                    );
+                                                })}
+                                            </g>
+                                        );
+                                    })}
+
+                                    {/* Tooltip */}
+                                    {hoverData && (() => {
+                                        const isFlipped = hoverData.isFlipped;
+                                        const safeX = Math.max(70, Math.min(width - 70, hoverData.x));
+                                        
+                                        return (
+                                            <g transform={`translate(${safeX}, ${hoverData.y})`} className="pointer-events-none transition-all duration-100 ease-out z-50">
+                                                <rect x="-60" y={isFlipped ? "0" : "-45"} width="120" height="40" rx="6" fill={isDark ? "#1A1D24" : "#FFFFFF"} stroke={hoverData.color} strokeWidth="2" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.2))" />
+                                                <text x="0" y={isFlipped ? "17" : "-28"} textAnchor="middle" className={`text-[9px] font-black uppercase tracking-widest ${isDark ? 'fill-gray-400' : 'fill-gray-500'}`}>
+                                                    {hoverData.floor} ({hoverData.month})
+                                                </text>
+                                                <text x="0" y={isFlipped ? "31" : "-14"} textAnchor="middle" className={`text-xs font-black`} fill={hoverData.color}>
+                                                    {metric === 'costs' ? `₹${hoverData.value.toLocaleString('en-IN')}` : `${hoverData.value} Units`}
+                                                </text>
+                                                {isFlipped ? (
+                                                    <>
+                                                        <polygon points="-6,1 6,1 0,-5" fill={isDark ? "#1A1D24" : "#FFFFFF"} stroke={hoverData.color} strokeWidth="2" />
+                                                        <polygon points="-5,1 5,1 0,-4" fill={isDark ? "#1A1D24" : "#FFFFFF"} />
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <polygon points="-6,-5 6,-5 0,1" fill={isDark ? "#1A1D24" : "#FFFFFF"} stroke={hoverData.color} strokeWidth="2" />
+                                                        <polygon points="-5,-5 5,-5 0,0" fill={isDark ? "#1A1D24" : "#FFFFFF"} />
+                                                    </>
+                                                )}
+                                            </g>
+                                        );
+                                    })()}
+                                </svg>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Legend */}
+                    {allActiveFloors.length > 0 && (
+                        <div className="flex flex-wrap gap-3 justify-center mt-6">
+                            {allActiveFloors.map((f, i) => {
+                                const isHidden = hiddenFloors.includes(f.id);
+                                const color = getColorForFloor(f.id);
+                                return (
+                                    <button key={f.id} onClick={() => toggleFloor(f.id)} 
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-300 border-2 
+                                            ${isHidden ? 'opacity-50 grayscale hover:grayscale-0 border-transparent' : 'shadow-sm hover:scale-105 active:scale-95'}
+                                        `}
+                                        style={{ 
+                                            backgroundColor: isHidden ? 'transparent' : (isDark ? `${color}20` : `${color}10`),
+                                            borderColor: isHidden ? (isDark ? '#272A30' : '#E5E7EB') : color,
+                                            color: isHidden ? (isDark ? '#9CA3AF' : '#6B7280') : (isDark ? '#FFF' : '#000')
+                                        }}
+                                    >
+                                        <div className="w-3 h-3 rounded-full shadow-inner" style={{ backgroundColor: color }}></div>
+                                        {f.name}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         // PREMIUM VISUAL PROPERTY MAP
         const SimpleVisualHouse = ({ property, tenants, floors, onSelectUnit, onAddFloor, onDeleteFloor, isDark, compact = false }) => {
             const sortedFloors = [...floors].sort((a,b) => {
@@ -673,8 +1046,8 @@
                     </div>
 
                     {/* Building Structure */}
-                    <div className={`w-[88%] ${compact ? 'border-x-[12px] border-b-[12px] px-3 pb-3 pt-4 gap-3' : 'border-x-[16px] border-b-[16px] px-4 pb-4 pt-5 gap-4'} flex flex-col shadow-2xl relative z-0 rounded-b-md
-                        ${isDark ? 'border-[#1A1D24] bg-dark-card' : 'border-[#F3F4F6] bg-white'}`}>
+                    <div className={`w-[88%] ${compact ? 'border-x-[12px] border-b-[12px] px-3 pb-3 pt-4 gap-3' : 'border-x-[16px] border-b-[16px] px-4 pb-4 pt-5 gap-4'} flex flex-col shadow-2xl relative z-0 rounded-b-md 
+                        ${isDark ? 'border-[#1A1D24] bg-gradient-to-b from-[#16181D] to-[#0F1115] shadow-black/60' : 'border-[#F3F4F6] bg-gradient-to-b from-white to-gray-50 shadow-gray-200/60'}`}>
                         
                         {sortedFloors.map((floor, idx) => {
                             const isGround = idx === sortedFloors.length - 1;
@@ -752,9 +1125,9 @@
                         <td className="p-2 md:p-4 font-bold opacity-80 text-xs uppercase tracking-wider flex justify-between md:table-cell items-center"><span className="md:hidden font-black text-[10px] opacity-50">Month</span> {month ? month.split(' ')[0] : ''}</td>
                         {record ? (
                             <>
-                                <td className="p-2 md:p-4 font-black flex justify-between md:table-cell items-center"><span className="md:hidden font-black text-[10px] opacity-50 uppercase tracking-widest">Rent</span> {formatCurrency(record.rent)}</td>
-                                <td className="p-2 md:p-4 font-medium opacity-70 flex justify-between md:table-cell items-center"><span className="md:hidden font-black text-[10px] opacity-50 uppercase tracking-widest">Power</span> {formatCurrency(record.electricity)}</td>
-                                <td className="p-2 md:p-4 font-medium opacity-70 flex justify-between md:table-cell items-center"><span className="md:hidden font-black text-[10px] opacity-50 uppercase tracking-widest">Water</span> {formatCurrency(record.water)}</td>
+                                <td className="p-2 md:p-4 font-black flex justify-between md:table-cell items-center"><span className="md:hidden font-black text-[10px] opacity-50 uppercase tracking-widest">Rent (₹)</span> {formatCurrency(record.rent)}</td>
+                                <td className="p-2 md:p-4 font-medium opacity-70 flex justify-between md:table-cell items-center"><span className="md:hidden font-black text-[10px] opacity-50 uppercase tracking-widest">Power (₹)</span> {formatCurrency(record.electricity)}</td>
+                                <td className="p-2 md:p-4 font-medium opacity-70 flex justify-between md:table-cell items-center"><span className="md:hidden font-black text-[10px] opacity-50 uppercase tracking-widest">Water (₹)</span> {formatCurrency(record.water)}</td>
                                 <td className="p-2 md:p-4 opacity-60 font-mono text-xs flex justify-between md:table-cell items-center"><span className="md:hidden font-black text-[10px] opacity-50 uppercase tracking-widest">Meter</span> {record.meter || '-'}</td>
                                 <td className="p-2 md:p-4 flex justify-between md:table-cell items-center">
                                     <span className="md:hidden font-black text-[10px] opacity-50 uppercase tracking-widest">Mode</span>
@@ -847,6 +1220,17 @@
           const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', action: null });
           const [resetModalState, setResetModalState] = useState({ isOpen: false, text: '', password: '', isDeleting: false });
 
+          // Utility Calc State
+          const [utilityTab, setUtilityTab] = useState('electricity');
+          const [utilityBills, setUtilityBills] = useState([]);
+          const [utilYear, setUtilYear] = useState(new Date().getFullYear());
+          const [expandedBillId, setExpandedBillId] = useState(null); // Expandable History Rows
+          const [utilCalc, setUtilCalc] = useState({
+              propertyId: '', floorId: '', month: getMonthsList(new Date().getFullYear())[new Date().getMonth()],
+              previousMainMeter: '', mainMeter: '', totalBill: '', previousSubMeter: '', subMeterSecond: '',
+              finalBillOverride: '', waterBaseBill: ''
+          });
+
           // Forms
           const [formProperty, setFormProperty] = useState({ name: '', address: '', floorCount: 2 });
           const [formTenant, setFormTenant] = useState(INITIAL_TENANT_STATE);
@@ -862,8 +1246,8 @@
 
           // Dashboard Widget Layout State
           const [dashboardWidgets, setDashboardWidgets] = useState(() => {
-              try { return JSON.parse(localStorage.getItem('rentPro_widgets')) || { trends: true, dues: true, activity: true }; }
-              catch { return { trends: true, dues: true, activity: true }; }
+              try { return JSON.parse(localStorage.getItem('rentPro_widgets')) || { trends: true, utilities: true, dues: true, activity: true }; }
+              catch { return { trends: true, utilities: true, dues: true, activity: true }; }
           });
           const [showWidgetSettings, setShowWidgetSettings] = useState(false);
           useEffect(() => { localStorage.setItem('rentPro_widgets', JSON.stringify(dashboardWidgets)); }, [dashboardWidgets]);
@@ -919,6 +1303,7 @@
             unsubscribers.push(syncCollection('floors', setFloors, INITIAL_FLOORS_DEFAULT));
             unsubscribers.push(syncCollection('bankUsers', setBankUsers));
             unsubscribers.push(syncCollection('bankTransactions', setBankTransactions));
+            unsubscribers.push(syncCollection('utilityBills', setUtilityBills));
 
             unsubscribers.push(onSnapshot(getColRef('activityLog'), (snap) => {
                 const logs = snap.docs.map(d => d.data());
@@ -928,6 +1313,43 @@
 
             return () => unsubscribers.forEach(unsub => unsub());
           }, [firebaseUser]);
+
+          // Auto-fill previous meter readings when property or month changes
+          useEffect(() => {
+              if (utilCalc.propertyId && utilCalc.month) {
+                  const selectedDate = new Date(utilCalc.month);
+                  const pastBills = utilityBills
+                      .filter(b => b.propertyId === utilCalc.propertyId && new Date(b.month) < selectedDate && b.type === 'electricity')
+                      .sort((a,b) => new Date(b.month) - new Date(a.month));
+                  
+                  if (pastBills.length > 0) {
+                      const latestBill = pastBills[0];
+                      setUtilCalc(prev => ({
+                          ...prev,
+                          previousMainMeter: latestBill.mainMeter || '',
+                          previousSubMeter: latestBill.subMeterSecond || ''
+                      }));
+                  } else {
+                      setUtilCalc(prev => ({
+                          ...prev,
+                          previousMainMeter: '',
+                          previousSubMeter: ''
+                      }));
+                  }
+              }
+          }, [utilCalc.propertyId, utilCalc.month]);
+
+          // Auto-set water base bill defaults
+          useEffect(() => {
+              if (utilityTab === 'water' && utilCalc.floorId) {
+                  const floor = floors.find(f => f.id === utilCalc.floorId);
+                  if (floor) {
+                      const isGround = floor.name.includes('GROUND');
+                      const isSecond = floor.name.includes('SECOND');
+                      setUtilCalc(prev => ({...prev, waterBaseBill: isGround ? '100' : (isSecond ? '200' : '0')}));
+                  }
+              }
+          }, [utilCalc.floorId, utilityTab, floors]);
 
           useEffect(() => {
             if (isDark) document.documentElement.classList.add('dark');
@@ -973,6 +1395,94 @@
           const calculateDueAmount = (t) => calculateDueDetails(t).due;
           const isLate = (t) => calculateDueAmount(t) > 0;
 
+          // Utility Calculation Helpers
+          const utilActiveFloors = floors.filter(f => f.propertyId === utilCalc.propertyId);
+          const selectedUtilFloorName = utilActiveFloors.find(f => f.id === utilCalc.floorId)?.name || '';
+          
+          const utilPrevMainMeterNum = Number(utilCalc.previousMainMeter) || 0;
+          const utilMainMeterNum = Number(utilCalc.mainMeter) || 0;
+          const mainConsumption = Math.max(0, utilMainMeterNum - utilPrevMainMeterNum);
+
+          const utilPrevSubMeterNum = Number(utilCalc.previousSubMeter) || 0;
+          const utilSubMeterNum = Number(utilCalc.subMeterSecond) || 0;
+          const subConsumption = Math.max(0, utilSubMeterNum - utilPrevSubMeterNum);
+
+          const utilTotalBillNum = Number(utilCalc.totalBill) || 0;
+
+          const utilPricePerUnit = mainConsumption > 0 ? (utilTotalBillNum / mainConsumption) : 0;
+          
+          let utilConsumption = 0;
+          let utilConsumptionNote = '';
+          
+          if (selectedUtilFloorName.includes('SECOND')) {
+              utilConsumption = subConsumption;
+              utilConsumptionNote = `Current (${utilSubMeterNum}) - Previous (${utilPrevSubMeterNum})`;
+          } else if (selectedUtilFloorName.includes('GROUND')) {
+              utilConsumption = Math.max(0, mainConsumption - subConsumption);
+              utilConsumptionNote = `Total Units (${mainConsumption}) - Second Floor Units (${subConsumption})`;
+          } else {
+              utilConsumption = 0;
+              utilConsumptionNote = 'Select Ground or Second Floor to calculate based on the provided logic.';
+          }
+
+          const utilBaseBill = utilConsumption * utilPricePerUnit;
+          const utilSurcharge = 15; // Unconditional Fixed Surcharge
+          
+          // AUTOMATED PENDING CUMULATIVE CALCULATION
+          let autoPendingDue = 0;
+          const selectedUtilDate = new Date(utilCalc.month);
+
+          if (utilCalc.floorId && utilCalc.propertyId) {
+              // Sum of all past electricity bills generated for this specific floor before the selected month
+              const pastBills = utilityBills.filter(b => b.floorId === utilCalc.floorId && b.type === 'electricity' && new Date(b.month) < selectedUtilDate);
+              
+              // Use the actual saved finalBill minus previousDues to get the exact billed amount for that specific month
+              // This accounts for any manual overrides made by the user in the Final Total Bill field
+              const totalBilled = pastBills.reduce((sum, b) => {
+                  const currentMonthActualBilled = Number(b.finalBill || 0) - Number(b.previousDues || 0);
+                  return sum + currentMonthActualBilled;
+              }, 0);
+              
+              // Sum of all electricity payments made by any tenant assigned to this property & floor before the selected month
+              const floorTenants = tenants.filter(t => t.propertyId === utilCalc.propertyId && t.floor === selectedUtilFloorName);
+              const floorTenantIds = floorTenants.map(t => t.id);
+              const totalPaid = records
+                  .filter(r => floorTenantIds.includes(r.tenantId) && new Date(r.month) < selectedUtilDate)
+                  .reduce((sum, r) => sum + Number(r.electricity || 0), 0);
+                  
+              autoPendingDue = totalBilled - totalPaid;
+          }
+
+          const utilPreviousNum = autoPendingDue;
+          const utilCalculatedFinalBill = utilBaseBill + utilSurcharge + utilPreviousNum;
+          const utilFinalBill = utilCalc.finalBillOverride !== '' ? Number(utilCalc.finalBillOverride) : Math.round(utilCalculatedFinalBill);
+
+          // AUTOMATED PENDING CUMULATIVE CALCULATION FOR WATER
+          let waterAutoPendingDue = 0;
+          if (utilCalc.floorId && utilCalc.propertyId) {
+              const pastWaterBills = utilityBills.filter(b => b.floorId === utilCalc.floorId && b.type === 'water' && new Date(b.month) < selectedUtilDate);
+              const totalWaterBilled = pastWaterBills.reduce((sum, b) => sum + (Number(b.finalBill || 0) - Number(b.previousDues || 0)), 0);
+              
+              const floorTenants = tenants.filter(t => t.propertyId === utilCalc.propertyId && t.floor === selectedUtilFloorName);
+              const floorTenantIds = floorTenants.map(t => t.id);
+              const totalWaterPaid = records
+                  .filter(r => floorTenantIds.includes(r.tenantId) && new Date(r.month) < selectedUtilDate)
+                  .reduce((sum, r) => sum + Number(r.water || 0), 0);
+                  
+              waterAutoPendingDue = totalWaterBilled - totalWaterPaid;
+          }
+          const waterCalculatedFinalBill = Number(utilCalc.waterBaseBill || 0) + waterAutoPendingDue;
+          const waterFinalBill = utilCalc.finalBillOverride !== '' ? Number(utilCalc.finalBillOverride) : Math.round(waterCalculatedFinalBill);
+
+          const getPaidAmountForBill = (bill) => {
+              const floor = floors.find(f => f.id === bill.floorId);
+              if (!floor) return 0;
+              const floorTenants = tenants.filter(t => t.propertyId === bill.propertyId && t.floor === floor.name);
+              const tenantIds = floorTenants.map(t => t.id);
+              const matchingRecords = records.filter(r => tenantIds.includes(r.tenantId) && r.month === bill.month);
+              return matchingRecords.reduce((sum, r) => sum + Number(bill.type === 'water' ? (r.water || 0) : (r.electricity || 0)), 0);
+          };
+
           // ACTIONS
 
           const handleProtectedAction = (e, actionCallback) => {
@@ -999,7 +1509,7 @@
               if (resetModalState.password !== currentUser.password) { showToast("Incorrect admin password.", "error"); return; }
               setResetModalState(prev => ({ ...prev, isDeleting: true }));
               try {
-                  const collectionsToClear = ['users', 'properties', 'tenants', 'owners', 'records', 'transactions', 'floors', 'bankUsers', 'bankTransactions', 'activityLog'];
+                  const collectionsToClear = ['users', 'properties', 'tenants', 'owners', 'records', 'transactions', 'floors', 'bankUsers', 'bankTransactions', 'activityLog', 'utilityBills'];
                   for (const colName of collectionsToClear) {
                       const colRef = getColRef(colName);
                       const querySnapshot = await getDocs(colRef);
@@ -1023,6 +1533,7 @@
                   setBankUsers([]);
                   setBankTransactions([]);
                   setActivityLog([]);
+                  setUtilityBills([]);
                   
                   localStorage.clear();
                   showToast("System has been completely reset.", "success");
@@ -1038,7 +1549,7 @@
 
           const handleExportData = async () => {
               try {
-                  const exportData = { users, properties, tenants, owners, records, transactions, floors, bankUsers, bankTransactions, activityLog };
+                  const exportData = { users, properties, tenants, owners, records, transactions, floors, bankUsers, bankTransactions, activityLog, utilityBills };
                   const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
@@ -1066,7 +1577,7 @@
                           action: async () => {
                               setConfirmModal({ isOpen: false, message: '', action: null });
                               showToast("Importing data... please wait.");
-                              const collections = ['users', 'properties', 'tenants', 'owners', 'records', 'transactions', 'floors', 'bankUsers', 'bankTransactions', 'activityLog'];
+                              const collections = ['users', 'properties', 'tenants', 'owners', 'records', 'transactions', 'floors', 'bankUsers', 'bankTransactions', 'activityLog', 'utilityBills'];
                               
                               for (const colName of collections) {
                                   if (importedData[colName] && Array.isArray(importedData[colName])) {
@@ -1206,6 +1717,68 @@
               });
           };
 
+          const saveUtilityBill = () => {
+              if (!utilCalc.propertyId || !utilCalc.floorId) { showToast('Select property and floor to generate bill.', 'error'); return; }
+              
+              const billId = `ub-${utilCalc.floorId}-${utilCalc.month.replace(' ', '')}`;
+              const newBill = {
+                  id: billId,
+                  propertyId: utilCalc.propertyId,
+                  floorId: utilCalc.floorId,
+                  type: 'electricity',
+                  month: utilCalc.month,
+                  previousMainMeter: utilPrevMainMeterNum,
+                  mainMeter: utilMainMeterNum,
+                  previousSubMeter: utilPrevSubMeterNum,
+                  subMeterSecond: utilSubMeterNum,
+                  totalBill: utilTotalBillNum,
+                  pricePerUnit: utilPricePerUnit,
+                  consumption: utilConsumption,
+                  baseBill: utilBaseBill,
+                  surcharge: utilSurcharge,
+                  previousDues: utilPreviousNum,
+                  finalBill: utilFinalBill,
+                  timestamp: new Date().toISOString()
+              };
+              saveToDb('utilityBills', newBill);
+              showToast('Utility bill generated and saved successfully.');
+              addLog(`Generated electricity bill for ${selectedUtilFloorName} - ${utilCalc.month}`);
+              setUtilCalc({...utilCalc, finalBillOverride: ''}); // Reset override on save
+          };
+
+          const saveWaterBill = () => {
+              if (!utilCalc.propertyId || !utilCalc.floorId) { showToast('Select property and floor to generate bill.', 'error'); return; }
+              const billId = `wb-${utilCalc.floorId}-${utilCalc.month.replace(' ', '')}`;
+              const newBill = {
+                  id: billId,
+                  propertyId: utilCalc.propertyId,
+                  floorId: utilCalc.floorId,
+                  type: 'water',
+                  month: utilCalc.month,
+                  baseBill: utilCalc.waterBaseBill,
+                  consumption: utilCalc.waterBaseBill, // For the chart compatibility
+                  previousDues: waterAutoPendingDue,
+                  finalBill: waterFinalBill,
+                  timestamp: new Date().toISOString()
+              };
+              saveToDb('utilityBills', newBill);
+              showToast('Water bill generated and saved successfully.');
+              addLog(`Generated water bill for ${selectedUtilFloorName} - ${utilCalc.month}`);
+              setUtilCalc({...utilCalc, finalBillOverride: ''});
+          };
+
+          const requestDeleteUtilityBill = (id) => {
+              setConfirmModal({
+                  isOpen: true, message: `Are you sure you want to delete this generated bill? It will affect cumulative pending calculations for future bills.`,
+                  action: () => {
+                      deleteFromDb('utilityBills', id);
+                      showToast('Generated bill deleted.', 'error');
+                      addLog(`Deleted utility bill record.`);
+                      setConfirmModal({ isOpen: false, message: '', action: null });
+                  }
+              });
+          };
+
           const requestDeleteBankUser = (id) => {
               const user = bankUsers.find(u => u.id === id);
               setConfirmModal({
@@ -1324,7 +1897,35 @@
               else if (month) {
                   const [mName, yStr] = month.split(' ');
                   const targetDate = new Date(Number(yStr), new Date(`${mName} 1, 2000`).getMonth(), 1);
-                  setEditRecordState({ ...INITIAL_RECORD_STATE, rent: getRentForDate(selectedTenant, targetDate), date: new Date().toISOString().split('T')[0] });
+                  
+                  // Auto-populate Utility Data
+                  let autoElec = '';
+                  let autoWater = '';
+                  let autoMeter = '';
+                  if (selectedTenant && selectedTenant.propertyId) {
+                      const floor = floors.find(f => f.propertyId === selectedTenant.propertyId && f.name === selectedTenant.floor);
+                      if (floor) {
+                          const eBill = utilityBills.find(b => b.propertyId === selectedTenant.propertyId && b.floorId === floor.id && b.month === month && b.type === 'electricity');
+                          if (eBill) {
+                              autoElec = eBill.finalBill || '';
+                              // Use submeter for second floor, main meter for ground/others (matching utility logic)
+                              autoMeter = selectedTenant.floor.includes('SECOND') ? (eBill.subMeterSecond || '') : (eBill.mainMeter || '');
+                          }
+                          const wBill = utilityBills.find(b => b.propertyId === selectedTenant.propertyId && b.floorId === floor.id && b.month === month && b.type === 'water');
+                          if (wBill) {
+                              autoWater = wBill.finalBill || '';
+                          }
+                      }
+                  }
+
+                  setEditRecordState({ 
+                      ...INITIAL_RECORD_STATE, 
+                      rent: getRentForDate(selectedTenant, targetDate), 
+                      electricity: autoElec,
+                      water: autoWater,
+                      meter: autoMeter,
+                      date: new Date().toISOString().split('T')[0] 
+                  });
               }
           };
 
@@ -1496,6 +2097,7 @@
                                   { id: 'tenants', icon: Users, label: 'Tenants' },
                                   { id: 'owners', icon: Briefcase, label: 'Owners' }, 
                                   { id: 'bank', icon: Landmark, label: 'Bank Acc' },
+                                  { id: 'utilities', icon: Zap, label: 'Utilities Calc' },
                                   currentUser?.role === 'admin' ? { id: 'admin', icon: Shield, label: 'Admin' } : null,
                               ].filter(Boolean).map(item => {
                                   const isActive = view === item.id;
@@ -1577,7 +2179,7 @@
                                         <div className={`absolute top-[calc(100%+8px)] right-0 z-[100] w-72 rounded-2xl shadow-2xl border-2 overflow-hidden animate-in zoom-in-95 duration-200 ${isDark ? 'bg-dark-card border-[#272A30]' : 'bg-white border-[#E5E7EB]'}`}>
                                             <div className={`p-4 border-b text-[10px] font-black uppercase tracking-widest opacity-60 ${isDark ? 'border-[#272A30] bg-[#1A1D24]' : 'border-[#E5E7EB] bg-gray-50'}`}>Customize Dashboard Layout</div>
                                             <div className="p-3 flex flex-col gap-2">
-                                                {[ {id: 'trends', label: 'Revenue Trends Chart'}, {id: 'dues', label: 'Critical Dues Alerts'}, {id: 'activity', label: 'System Activity Log'} ].map(w => (
+                                                {[ {id: 'trends', label: 'Revenue Trends Chart'}, {id: 'utilities', label: 'Utility Analytics'}, {id: 'dues', label: 'Critical Dues Alerts'}, {id: 'activity', label: 'System Activity Log'} ].map(w => (
                                                     <div key={w.id} onClick={() => toggleWidget(w.id)} className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-colors border-2 border-transparent select-none ${isDark ? 'hover:bg-white/5 hover:border-[#272A30]' : 'hover:bg-gray-50 hover:border-[#E5E7EB]'}`}>
                                                         <span className="text-sm font-bold opacity-90">{w.label}</span>
                                                         <div className={`w-10 h-6 rounded-full p-1 transition-colors ${dashboardWidgets[w.id] ? 'bg-brand-500' : (isDark ? 'bg-[#272A30]' : 'bg-gray-300')}`}>
@@ -1602,11 +2204,7 @@
                                     owners.map(owner => {
                                         const bal = calculateOwnerBalance(owner.id);
                                         return (
-                                        <div key={owner.id} className={`p-6 rounded-[2rem] border relative overflow-hidden transition-all duration-500 hover:-translate-y-2 group
-                                            ${isDark ? 'bg-gradient-to-br from-[#1A1D24] to-[#0F1115] border-[#272A30] shadow-[0_8px_30px_rgb(0,0,0,0.5)]' : 'bg-gradient-to-br from-white to-gray-50 border-gray-200 shadow-xl'}`}>
-                                            
-                                            {/* Carbon Fiber Overlay / Texture */}
-                                            <div className={`absolute inset-0 opacity-[0.04] pointer-events-none ${isDark ? 'bg-[url("data:image/svg+xml,%3Csvg width=\'6\' height=\'6\' viewBox=\'0 0 6 6\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'1\' fill-rule=\'evenodd\'%3E%3Cpath d=\'M5 0h1L0 6V5zM6 5v1H5z\'/%3E%3C/g%3E%3C/svg%3E")]' : 'bg-[url("data:image/svg+xml,%3Csvg width=\'6\' height=\'6\' viewBox=\'0 0 6 6\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23000000\' fill-opacity=\'1\' fill-rule=\'evenodd\'%3E%3Cpath d=\'M5 0h1L0 6V5zM6 5v1H5z\'/%3E%3C/g%3E%3C/svg%3E")]'}`}></div>
+                                        <div key={owner.id} className="premium-card p-6 rounded-[2rem] overflow-hidden group hover:-translate-y-2">
 
                                             {/* Glowing orb background */}
                                             <div className={`absolute -right-10 -top-10 w-32 h-32 rounded-full blur-[50px] transition-all duration-500 group-hover:scale-150 group-hover:bg-brand-500/30 ${isDark ? 'bg-brand-500/10' : 'bg-brand-500/20'}`}></div>
@@ -1719,8 +2317,7 @@
                                 <div className="xl:col-span-2 space-y-8">
                                     {/* Chart Card */}
                                     {dashboardWidgets.trends && (
-                                    <div className={`p-6 md:p-8 rounded-[2rem] border-2 shadow-lg transition-all hover:shadow-xl
-                                        ${isDark ? 'bg-dark-card border-dark-border shadow-black/20' : 'bg-white border-light-border shadow-soft'}`}>
+                                    <div className="premium-card p-6 md:p-8 rounded-[2rem]">
                                         <div className="flex items-center gap-4 mb-8">
                                             <div className="p-3 bg-brand-500/10 text-brand-500 rounded-2xl"><TrendingUp size={24} strokeWidth={2.5}/></div>
                                             <div>
@@ -1732,11 +2329,17 @@
                                     </div>
                                     )}
 
+                                    {/* Utility Analytics Card */}
+                                    {dashboardWidgets.utilities && (
+                                    <div className="premium-card p-6 md:p-8 rounded-[2rem]">
+                                        <DashboardUtilityChart bills={utilityBills} properties={properties} floors={floors} isDark={isDark} />
+                                    </div>
+                                    )}
+
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                                         {/* Critical Dues Card */}
                                         {dashboardWidgets.dues && (
-                                        <div className={`rounded-[2rem] border-2 overflow-hidden shadow-lg transition-all hover:shadow-xl flex flex-col
-                                            ${isDark ? 'bg-dark-card border-dark-border shadow-black/20' : 'bg-white border-light-border shadow-soft'}`}>
+                                        <div className="premium-card rounded-[2rem] overflow-hidden flex flex-col">
                                             <div className="p-5 bg-red-500/10 text-red-500 border-b border-red-500/10 flex items-center gap-3 shrink-0">
                                                 <div className="bg-red-500 text-white p-1.5 rounded-lg"><AlertCircle size={18} strokeWidth={3}/></div>
                                                 <span className="font-black text-base uppercase tracking-wider">Action Required</span>
@@ -1787,8 +2390,7 @@
 
                                         {/* System Activity Card */}
                                         {dashboardWidgets.activity && (
-                                        <div className={`rounded-[2rem] border-2 overflow-hidden shadow-lg transition-all hover:shadow-xl flex flex-col
-                                            ${isDark ? 'bg-dark-card border-dark-border shadow-black/20' : 'bg-white border-light-border shadow-soft'}`}>
+                                        <div className="premium-card rounded-[2rem] overflow-hidden flex flex-col">
                                             <div className="p-5 bg-brand-500/10 text-brand-600 dark:text-brand-400 border-b border-brand-500/10 flex items-center gap-3 shrink-0">
                                                 <div className="bg-brand-500 text-white p-1.5 rounded-lg"><Bell size={18} strokeWidth={3}/></div>
                                                 <span className="font-black text-base uppercase tracking-wider">Activity Log</span>
@@ -1823,6 +2425,553 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* VIEW: UTILITIES CALCULATOR */}
+                    {view === 'utilities' && (
+                        <div className="space-y-8 max-w-[1400px] mx-auto animate-in fade-in duration-500">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+                                <div>
+                                    <h2 className="text-4xl font-black tracking-tight flex items-center gap-4">
+                                        <div className="bg-gradient-to-tr from-brand-500 to-purple-500 p-2.5 rounded-xl shadow-lg shadow-brand-500/30 text-white"><Calculator size={28} strokeWidth={2.5}/></div>
+                                        Utility Calculator
+                                    </h2>
+                                    <p className="text-sm opacity-60 font-bold uppercase tracking-widest mt-3">Advanced Billing Estimations & Logging</p>
+                                </div>
+                            </div>
+
+                            {/* Utility Module Tabs */}
+                            <div className="flex gap-4 mb-8 border-b-2 border-transparent dark:border-[#272A30] pb-4 overflow-x-auto hide-scrollbar">
+                                <button onClick={() => setUtilityTab('electricity')} className={`px-6 py-3.5 rounded-2xl font-bold transition-all flex items-center gap-3 shadow-sm border-2 
+                                    ${utilityTab === 'electricity' 
+                                        ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20 scale-[1.02]' 
+                                        : (isDark ? 'bg-[#16181D] text-gray-500 hover:text-gray-300 border-[#272A30] hover:border-gray-600' : 'bg-white text-gray-500 hover:text-gray-800 border-[#E5E7EB] hover:border-gray-300')}`}>
+                                    <Zap size={20} className={utilityTab === 'electricity' ? 'text-yellow-500' : ''}/> Electricity Bill
+                                </button>
+                                <button onClick={() => setUtilityTab('water')} className={`px-6 py-3.5 rounded-2xl font-bold transition-all flex items-center gap-3 shadow-sm border-2 
+                                    ${utilityTab === 'water' 
+                                        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 scale-[1.02]' 
+                                        : (isDark ? 'bg-[#16181D] text-gray-500 hover:text-gray-300 border-[#272A30] hover:border-gray-600' : 'bg-white text-gray-500 hover:text-gray-800 border-[#E5E7EB] hover:border-gray-300')}`}>
+                                    <Droplets size={20} className={utilityTab === 'water' ? 'text-blue-500' : ''}/> Water Bill
+                                </button>
+                            </div>
+
+                            {/* TAB: ELECTRICITY */}
+                            {utilityTab === 'electricity' && (
+                                <div className="animate-in slide-in-from-left-8 duration-500 space-y-8">
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+                                        {/* Column 1: Inputs */}
+                                        <div className={`p-8 rounded-[2.5rem] border-2 shadow-xl ${isDark ? 'bg-dark-card border-dark-border' : 'bg-white border-light-border'}`}>
+                                            <div className="flex items-center gap-3 mb-8">
+                                                <div className="w-10 h-10 rounded-full bg-brand-500/10 flex items-center justify-center text-brand-500 font-black">1</div>
+                                                <h3 className="font-black text-2xl tracking-tight">Configuration Parameters</h3>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                                    <CustomSelect 
+                                                        isDark={isDark} label="Target Estate / Property" 
+                                                        value={utilCalc.propertyId} icon={Building}
+                                                        options={properties.map(p => ({value: p.id, label: p.name}))}
+                                                        onChange={val => setUtilCalc({...utilCalc, propertyId: val, floorId: '', finalBillOverride: ''})}
+                                                    />
+                                                    <CustomSelect 
+                                                        isDark={isDark} label="Target Floor" 
+                                                        value={utilCalc.floorId} disabled={!utilCalc.propertyId} icon={Home}
+                                                        options={utilActiveFloors.map(f => ({value: f.id, label: f.name}))}
+                                                        onChange={val => setUtilCalc({...utilCalc, floorId: val, finalBillOverride: ''})}
+                                                    />
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                                                    <div className="sm:col-span-2">
+                                                        <CustomSelect 
+                                                            isDark={isDark} label="Billing Cycle (Month)" 
+                                                            value={utilCalc.month} icon={Calendar}
+                                                            options={getMonthsList(utilYear).map(m => ({value: m, label: m}))}
+                                                            onChange={val => setUtilCalc({...utilCalc, month: val, finalBillOverride: ''})}
+                                                        />
+                                                    </div>
+                                                    <CustomSelect 
+                                                        isDark={isDark} label="Year" 
+                                                        value={utilYear} icon={Calendar}
+                                                        options={availableYears.map(y => ({value: y, label: y}))}
+                                                        onChange={val => {
+                                                            setUtilYear(Number(val));
+                                                            const monthName = utilCalc.month ? utilCalc.month.split(' ')[0] : 'January';
+                                                            setUtilCalc({...utilCalc, month: `${monthName} ${val}`, finalBillOverride: ''});
+                                                        }}
+                                                    />
+                                                </div>
+                                                
+                                                <div className="border-t-2 border-dashed py-4 my-2 opacity-50 dark:border-[#272A30]"></div>
+                                                
+                                                <FloatingInput label="Total Bill Generated (Dept) ₹" type="number" value={utilCalc.totalBill} icon={DollarSign} onChange={e=>setUtilCalc({...utilCalc, totalBill: e.target.value, finalBillOverride: ''})} isDark={isDark} />
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                                    <FloatingInput label="Prev Main Meter (Base)" type="number" value={utilCalc.previousMainMeter} icon={Activity} onChange={e=>setUtilCalc({...utilCalc, previousMainMeter: e.target.value, finalBillOverride: ''})} isDark={isDark} />
+                                                    <FloatingInput label="Current Main Meter" type="number" value={utilCalc.mainMeter} icon={Activity} onChange={e=>setUtilCalc({...utilCalc, mainMeter: e.target.value, finalBillOverride: ''})} isDark={isDark} />
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                                    <FloatingInput label="Prev 2nd Floor Submeter" type="number" value={utilCalc.previousSubMeter} icon={Activity} onChange={e=>setUtilCalc({...utilCalc, previousSubMeter: e.target.value, finalBillOverride: ''})} isDark={isDark} />
+                                                    <FloatingInput label="Current 2nd Floor Submeter" type="number" value={utilCalc.subMeterSecond} icon={Activity} onChange={e=>setUtilCalc({...utilCalc, subMeterSecond: e.target.value, finalBillOverride: ''})} isDark={isDark} />
+                                                </div>
+                                                
+                                                <div className="border-t-2 border-dashed py-4 my-2 opacity-50 dark:border-[#272A30]"></div>
+
+                                                <div className={`p-5 rounded-2xl border-2 flex gap-4 ${isDark ? 'bg-[#0F1115] border-[#272A30]' : 'bg-gray-50 border-[#E5E7EB]'}`}>
+                                                    <div className="text-brand-500 pt-1"><Clock size={20}/></div>
+                                                    <div className="flex-1">
+                                                        <p className="text-xs font-bold opacity-70 mb-2">Cumulative Pending Dues</p>
+                                                        <p className="text-[10px] leading-relaxed opacity-50 mb-4 font-medium">Automatically calculated. Represents all past generated bills minus all electricity payments made by tenants of this floor up to {utilCalc.month}.</p>
+                                                        <div className={`text-2xl font-black ${autoPendingDue > 0 ? 'text-red-500' : autoPendingDue < 0 ? 'text-emerald-500' : (isDark ? 'text-white' : 'text-black')}`}>
+                                                            {formatCurrency(autoPendingDue)} {autoPendingDue < 0 && <span className="text-xs font-bold uppercase tracking-widest ml-2 bg-emerald-500/10 px-2 py-1 rounded">(Credit)</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Column 2: Step-by-Step Receipt */}
+                                        <div className={`p-8 rounded-[2.5rem] border-2 shadow-xl sticky top-24 flex flex-col ${isDark ? 'bg-dark-bg border-brand-500/20 shadow-brand-500/5' : 'bg-brand-50 border-brand-200'}`}>
+                                            <div className="flex items-center gap-3 mb-8 text-brand-500 shrink-0">
+                                                <div className="w-10 h-10 rounded-full bg-brand-500 text-white flex items-center justify-center font-black shadow-lg shadow-brand-500/30"><Receipt size={20}/></div>
+                                                <h3 className="font-black text-2xl tracking-tight text-light-text dark:text-dark-text">Bill Breakdown</h3>
+                                            </div>
+
+                                            <div className="space-y-6 text-sm flex-1">
+                                                {/* Step 1 */}
+                                                <div className={`p-5 rounded-2xl border-2 transition-all ${isDark ? 'bg-dark-card border-[#272A30]' : 'bg-white border-[#E5E7EB]'}`}>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-500 mb-2">Step 1: Price Per Unit</p>
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="opacity-70 font-semibold">{formatCurrency(utilTotalBillNum)} ÷ {mainConsumption || 1} units</p>
+                                                        <p className="font-black text-lg">{formatCurrencyDecimals(utilPricePerUnit)} <span className="text-[10px] opacity-50">/unit</span></p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Step 2 */}
+                                                <div className={`p-5 rounded-2xl border-2 transition-all ${isDark ? 'bg-dark-card border-[#272A30]' : 'bg-white border-[#E5E7EB]'}`}>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-500 mb-2">Step 2: Floor Consumption</p>
+                                                    <p className="opacity-70 font-semibold text-xs mb-3">{utilConsumptionNote}</p>
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="font-black opacity-90">{selectedUtilFloorName || 'Select Floor'}</p>
+                                                        <p className="font-black text-lg text-yellow-500">{utilConsumption} <span className="text-[10px] opacity-50 text-light-text dark:text-dark-text">units</span></p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Step 3 */}
+                                                <div className={`p-5 rounded-2xl border-2 transition-all ${isDark ? 'bg-dark-card border-[#272A30]' : 'bg-white border-[#E5E7EB]'}`}>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-500 mb-2">Step 3: Base Floor Bill</p>
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="opacity-70 font-semibold">{utilConsumption} units × {formatCurrencyDecimals(utilPricePerUnit)}</p>
+                                                        <p className="font-black text-lg">{formatCurrency(utilBaseBill)}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Step 4 */}
+                                                <div className={`p-5 rounded-2xl border-2 transition-all ${isDark ? 'bg-dark-card border-[#272A30]' : 'bg-white border-[#E5E7EB]'}`}>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-500 mb-2">Step 4: Fixed Surcharge</p>
+                                                    <p className="opacity-70 font-semibold text-xs mb-3">Standard ₹15 maintenance fee applied.</p>
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="font-black text-xs opacity-60">Status: Applied</p>
+                                                        <p className={`font-black text-lg text-red-500`}>+{formatCurrency(utilSurcharge)}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Step 5 */}
+                                                <div className={`p-5 rounded-2xl border-2 transition-all ${isDark ? 'bg-dark-card border-[#272A30]' : 'bg-white border-[#E5E7EB]'}`}>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-500 mb-2">Step 5: Previous Dues</p>
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="opacity-70 font-semibold">Cumulated past balance</p>
+                                                        <p className={`font-black text-lg ${autoPendingDue > 0 ? 'text-red-500' : autoPendingDue < 0 ? 'text-emerald-500' : ''}`}>
+                                                            {autoPendingDue > 0 ? '+' : ''}{formatCurrency(autoPendingDue)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Final Total */}
+                                                <div className="pt-4 border-t-2 border-dashed dark:border-[#272A30] flex justify-between items-end gap-4">
+                                                    <div>
+                                                        <p className="text-xs font-black opacity-50 uppercase tracking-widest mb-1">Final Total Bill</p>
+                                                        <p className="text-sm font-bold opacity-70">Editable Amount</p>
+                                                    </div>
+                                                    <div className="relative group flex-1 max-w-[180px]">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xl font-black text-emerald-500 pointer-events-none">₹</span>
+                                                        <input 
+                                                            type="number"
+                                                            value={utilCalc.finalBillOverride !== '' ? utilCalc.finalBillOverride : Math.round(utilCalculatedFinalBill)}
+                                                            onChange={e => setUtilCalc({...utilCalc, finalBillOverride: e.target.value})}
+                                                            className="w-full text-right bg-transparent border-b-2 border-emerald-500/50 hover:border-emerald-400 focus:border-emerald-500 outline-none text-4xl md:text-5xl font-black text-emerald-500 drop-shadow-md pb-1 pl-8 transition-colors rounded-none"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <button onClick={(e) => handleProtectedAction(e, saveUtilityBill)} className="w-full mt-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white px-6 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-emerald-500/30 font-bold transition-all hover:-translate-y-1 active:scale-95 text-base shrink-0">
+                                                <Save size={20} strokeWidth={3} /> Save Generated Bill
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Consumption Trends Chart Section */}
+                                    {utilCalc.floorId && utilityBills.filter(b => b.type === 'electricity' && b.floorId === utilCalc.floorId).length > 0 && (
+                                        <div className={`p-8 rounded-[2.5rem] border-2 shadow-xl ${isDark ? 'bg-dark-card border-dark-border' : 'bg-white border-light-border'}`}>
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="p-3 bg-yellow-500/10 text-yellow-500 rounded-2xl"><BarChart2 size={24} strokeWidth={2.5}/></div>
+                                                    <div>
+                                                        <h3 className="font-black text-xl">Consumption Trends</h3>
+                                                        <p className="opacity-50 text-xs font-bold uppercase tracking-widest mt-1">Electricity usage over time</p>
+                                                    </div>
+                                                </div>
+                                                <span className="px-3 py-1 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 font-bold text-xs uppercase tracking-widest rounded-lg border border-yellow-500/20">{selectedUtilFloorName}</span>
+                                            </div>
+                                            <UtilityConsumptionChart 
+                                                bills={utilityBills.filter(b => b.type === 'electricity' && b.floorId === utilCalc.floorId)} 
+                                                isDark={isDark} 
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Generated Bills History */}
+                                    <div className={`rounded-[2rem] border-2 shadow-xl overflow-hidden ${isDark ? 'bg-dark-card border-dark-border' : 'bg-white border-light-border'}`}>
+                                        <div className={`p-6 border-b-2 flex justify-between items-center ${isDark ? 'border-[#272A30]' : 'border-[#E5E7EB]'}`}>
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-2.5 bg-brand-500/10 text-brand-500 rounded-xl"><History size={20} strokeWidth={3}/></div>
+                                                <span className="font-black text-xl">Generated Bills History</span>
+                                            </div>
+                                            {utilCalc.floorId && <div className="text-[10px] font-black uppercase tracking-widest opacity-50 px-3 py-1 border rounded-lg dark:border-[#272A30]">Filtered by selected floor</div>}
+                                        </div>
+                                        <div className="overflow-x-auto max-h-[600px] hide-scrollbar">
+                                            <table className="w-full text-left text-sm relative block md:table">
+                                                <thead className={`text-[10px] font-black uppercase tracking-[0.2em] sticky top-0 z-10 backdrop-blur-xl hidden md:table-header-group
+                                                    ${isDark ? 'bg-[#1A1D24]/95 text-dark-muted border-b-2 border-[#272A30]' : 'bg-[#F9FAFB]/95 text-light-muted border-b-2 border-[#E5E7EB]'}`}>
+                                                    <tr>
+                                                        <th className="p-5">Billing Cycle</th>
+                                                        <th className="p-5">Floor</th>
+                                                        <th className="p-5 font-black text-brand-500">Final Bill</th>
+                                                        <th className="p-5 text-emerald-500">Amount Paid</th>
+                                                        <th className="p-5">Status</th>
+                                                        <th className="p-5 text-right">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y-2 divide-gray-100 dark:divide-[#272A30] block md:table-row-group">
+                                                    {utilityBills.filter(b => b.type === 'electricity' && (!utilCalc.floorId || b.floorId === utilCalc.floorId)).length > 0 ? (
+                                                        utilityBills
+                                                        .filter(b => b.type === 'electricity' && (!utilCalc.floorId || b.floorId === utilCalc.floorId))
+                                                        .sort((a,b) => new Date(b.month) - new Date(a.month))
+                                                        .map(bill => {
+                                                            const floorName = floors.find(f => f.id === bill.floorId)?.name || 'Unknown Floor';
+                                                            const amountPaid = getPaidAmountForBill(bill);
+                                                            const isSettled = amountPaid >= Number(bill.finalBill);
+                                                            const isPartial = amountPaid > 0 && amountPaid < Number(bill.finalBill);
+                                                            
+                                                            const statusConfig = isSettled ? { text: 'SETTLED', style: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400' } :
+                                                                                 isPartial ? { text: 'PARTIALLY PAID', style: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20 dark:text-yellow-400' } :
+                                                                                             { text: 'GENERATED', style: 'bg-gray-500/10 text-gray-600 border-gray-500/20 dark:text-gray-400' };
+
+                                                            const isExpanded = expandedBillId === bill.id;
+
+                                                            return (
+                                                            <React.Fragment key={bill.id}>
+                                                                <tr onClick={() => setExpandedBillId(isExpanded ? null : bill.id)} className={`transition-colors font-medium group block md:table-row p-4 md:p-0 border-b-2 md:border-b-0 cursor-pointer ${isDark ? 'hover:bg-white/5 border-[#272A30]' : 'hover:bg-gray-50 border-[#E5E7EB]'}`}>
+                                                                    <td className="p-2 md:p-5 font-black text-xs flex md:table-cell justify-between items-center"><span className="md:hidden opacity-60 uppercase tracking-widest text-[10px]">Cycle</span> {bill.month}</td>
+                                                                    <td className="p-2 md:p-5 opacity-70 text-xs font-bold uppercase tracking-widest flex md:table-cell justify-between items-center"><span className="md:hidden opacity-60">Floor</span> {floorName}</td>
+                                                                    <td className="p-2 md:p-5 font-black text-brand-500 text-base flex md:table-cell justify-between items-center"><span className="md:hidden opacity-60 uppercase tracking-widest text-[10px]">Final Bill</span> {formatCurrency(bill.finalBill)}</td>
+                                                                    <td className="p-2 md:p-5 font-bold text-emerald-600 dark:text-emerald-400 flex md:table-cell justify-between items-center"><span className="md:hidden opacity-60 uppercase tracking-widest text-[10px]">Amount Paid</span> {formatCurrency(amountPaid)}</td>
+                                                                    <td className="p-2 md:p-5 flex md:table-cell justify-between items-center">
+                                                                        <span className="md:hidden opacity-60 uppercase tracking-widest text-[10px]">Status</span>
+                                                                        <span className={`px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-sm ${statusConfig.style}`}>
+                                                                            {statusConfig.text}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="p-2 md:p-5 text-right flex justify-end items-center gap-3 md:mt-0 pt-3 md:pt-0 border-t md:border-0 border-dashed dark:border-[#272A30]">
+                                                                        <button onClick={(e) => { e.stopPropagation(); requestDeleteUtilityBill(bill.id); }} className="text-red-500 hover:bg-red-500 hover:text-white p-2 rounded-lg transition-all opacity-100 md:opacity-0 group-hover:opacity-100">
+                                                                            <Trash2 size={16} strokeWidth={2.5}/>
+                                                                        </button>
+                                                                        <button className={`p-2 rounded-lg transition-transform ${isExpanded ? 'rotate-180 bg-brand-500/10 text-brand-500' : 'opacity-40 group-hover:opacity-100'}`}>
+                                                                            <ChevronDown size={18} strokeWidth={2.5}/>
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                                {/* Expandable Details Row */}
+                                                                {isExpanded && (
+                                                                    <tr className={`block md:table-row shadow-inner border-b-2 ${isDark ? 'bg-[#121418] border-[#272A30]' : 'bg-brand-50 border-brand-100'}`}>
+                                                                        <td colSpan="6" className="p-6 md:p-8">
+                                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">Price Per Unit</p>
+                                                                                    <p className="font-bold">{formatCurrencyDecimals(bill.pricePerUnit)} /u</p>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">Consumption</p>
+                                                                                    <p className="font-bold text-yellow-500">{bill.consumption} Units</p>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">Base + Surcharge</p>
+                                                                                    <p className="font-bold">{formatCurrency(Number(bill.baseBill) + Number(bill.surcharge))}</p>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">Carried Forward</p>
+                                                                                    <p className={`font-bold ${Number(bill.previousDues) > 0 ? 'text-red-500' : Number(bill.previousDues) < 0 ? 'text-emerald-500' : 'opacity-70'}`}>
+                                                                                        {formatCurrency(bill.previousDues)}
+                                                                                    </p>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="mt-6 pt-4 border-t-2 border-dashed border-gray-200 dark:border-gray-800 flex justify-between items-center">
+                                                                                <p className="text-xs font-semibold opacity-60">Balance Remaining: <span className={`font-black ml-1 ${!isSettled ? 'text-red-500' : 'text-emerald-500'}`}>{formatCurrency(Number(bill.finalBill) - amountPaid)}</span></p>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                            </React.Fragment>
+                                                        )})
+                                                    ) : (
+                                                        <tr><td colSpan="6" className="p-24 text-center opacity-30 font-black text-xl uppercase tracking-widest block md:table-cell border-t md:border-0 border-dashed dark:border-[#272A30] mt-4">No bills generated for selected filter</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TAB: WATER */}
+                            {utilityTab === 'water' && (
+                                <div className="animate-in slide-in-from-right-8 duration-500 space-y-8">
+                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+                                        {/* Inputs Column */}
+                                        <div className={`p-8 rounded-[2.5rem] border-2 shadow-xl ${isDark ? 'bg-dark-card border-dark-border' : 'bg-white border-light-border'}`}>
+                                            <div className="flex items-center gap-3 mb-8">
+                                                <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 font-black">1</div>
+                                                <h3 className="font-black text-2xl tracking-tight">Configuration Parameters</h3>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                                    <CustomSelect 
+                                                        isDark={isDark} label="Target Estate / Property" 
+                                                        value={utilCalc.propertyId} icon={Building}
+                                                        options={properties.map(p => ({value: p.id, label: p.name}))}
+                                                        onChange={val => setUtilCalc({...utilCalc, propertyId: val, floorId: '', finalBillOverride: ''})}
+                                                    />
+                                                    <CustomSelect 
+                                                        isDark={isDark} label="Target Floor" 
+                                                        value={utilCalc.floorId} disabled={!utilCalc.propertyId} icon={Home}
+                                                        options={utilActiveFloors.map(f => ({value: f.id, label: f.name}))}
+                                                        onChange={val => setUtilCalc({...utilCalc, floorId: val, finalBillOverride: ''})}
+                                                    />
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                                                    <div className="sm:col-span-2">
+                                                        <CustomSelect 
+                                                            isDark={isDark} label="Billing Cycle (Month)" 
+                                                            value={utilCalc.month} icon={Calendar}
+                                                            options={getMonthsList(utilYear).map(m => ({value: m, label: m}))}
+                                                            onChange={val => setUtilCalc({...utilCalc, month: val, finalBillOverride: ''})}
+                                                        />
+                                                    </div>
+                                                    <CustomSelect 
+                                                        isDark={isDark} label="Year" 
+                                                        value={utilYear} icon={Calendar}
+                                                        options={availableYears.map(y => ({value: y, label: y}))}
+                                                        onChange={val => {
+                                                            setUtilYear(Number(val));
+                                                            const monthName = utilCalc.month ? utilCalc.month.split(' ')[0] : 'January';
+                                                            setUtilCalc({...utilCalc, month: `${monthName} ${val}`, finalBillOverride: ''});
+                                                        }}
+                                                    />
+                                                </div>
+                                                
+                                                <div className="border-t-2 border-dashed py-4 my-2 opacity-50 dark:border-[#272A30]"></div>
+                                                
+                                                <FloatingInput label="Current Month Base Bill ₹" type="number" value={utilCalc.waterBaseBill} icon={Droplets} onChange={e=>setUtilCalc({...utilCalc, waterBaseBill: e.target.value, finalBillOverride: ''})} isDark={isDark} />
+
+                                                <div className="border-t-2 border-dashed py-4 my-2 opacity-50 dark:border-[#272A30]"></div>
+
+                                                <div className={`p-5 rounded-2xl border-2 flex gap-4 ${isDark ? 'bg-[#0F1115] border-[#272A30]' : 'bg-gray-50 border-[#E5E7EB]'}`}>
+                                                    <div className="text-blue-500 pt-1"><Clock size={20}/></div>
+                                                    <div className="flex-1">
+                                                        <p className="text-xs font-bold opacity-70 mb-2">Cumulative Pending Dues</p>
+                                                        <p className="text-[10px] leading-relaxed opacity-50 mb-4 font-medium">Automatically calculated. Represents all past generated water bills minus all water payments made by tenants of this floor up to {utilCalc.month}.</p>
+                                                        <div className={`text-2xl font-black ${waterAutoPendingDue > 0 ? 'text-red-500' : waterAutoPendingDue < 0 ? 'text-emerald-500' : (isDark ? 'text-white' : 'text-black')}`}>
+                                                            {formatCurrency(waterAutoPendingDue)} {waterAutoPendingDue < 0 && <span className="text-xs font-bold uppercase tracking-widest ml-2 bg-emerald-500/10 px-2 py-1 rounded">(Credit)</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Receipt Column */}
+                                        <div className={`p-8 rounded-[2.5rem] border-2 shadow-xl sticky top-24 flex flex-col ${isDark ? 'bg-dark-bg border-blue-500/20 shadow-blue-500/5' : 'bg-blue-50 border-blue-200'}`}>
+                                            <div className="flex items-center gap-3 mb-8 text-blue-500 shrink-0">
+                                                <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-black shadow-lg shadow-blue-500/30"><Receipt size={20}/></div>
+                                                <h3 className="font-black text-2xl tracking-tight text-light-text dark:text-dark-text">Bill Breakdown</h3>
+                                            </div>
+
+                                            <div className="space-y-6 text-sm flex-1">
+                                                {/* Step 1 */}
+                                                <div className={`p-5 rounded-2xl border-2 transition-all ${isDark ? 'bg-dark-card border-[#272A30]' : 'bg-white border-[#E5E7EB]'}`}>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-2">Step 1: Current Month Bill</p>
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="opacity-70 font-semibold">{selectedUtilFloorName || 'Select Floor'}</p>
+                                                        <p className="font-black text-lg text-blue-500">{formatCurrency(Number(utilCalc.waterBaseBill || 0))}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Step 2 */}
+                                                <div className={`p-5 rounded-2xl border-2 transition-all ${isDark ? 'bg-dark-card border-[#272A30]' : 'bg-white border-[#E5E7EB]'}`}>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-2">Step 2: Previous Dues</p>
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="opacity-70 font-semibold">Cumulated past balance</p>
+                                                        <p className={`font-black text-lg ${waterAutoPendingDue > 0 ? 'text-red-500' : waterAutoPendingDue < 0 ? 'text-emerald-500' : ''}`}>
+                                                            {waterAutoPendingDue > 0 ? '+' : ''}{formatCurrency(waterAutoPendingDue)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Final Total */}
+                                                <div className="pt-4 border-t-2 border-dashed dark:border-[#272A30] flex justify-between items-end gap-4">
+                                                    <div>
+                                                        <p className="text-xs font-black opacity-50 uppercase tracking-widest mb-1">Final Total Bill</p>
+                                                        <p className="text-sm font-bold opacity-70">Editable Amount</p>
+                                                    </div>
+                                                    <div className="relative group flex-1 max-w-[180px]">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xl font-black text-blue-500 pointer-events-none">₹</span>
+                                                        <input 
+                                                            type="number"
+                                                            value={utilCalc.finalBillOverride !== '' ? utilCalc.finalBillOverride : Math.round(waterCalculatedFinalBill)}
+                                                            onChange={e => setUtilCalc({...utilCalc, finalBillOverride: e.target.value})}
+                                                            className="w-full text-right bg-transparent border-b-2 border-blue-500/50 hover:border-blue-400 focus:border-blue-500 outline-none text-4xl md:text-5xl font-black text-blue-500 drop-shadow-md pb-1 pl-8 transition-colors rounded-none"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <button onClick={(e) => handleProtectedAction(e, saveWaterBill)} className="w-full mt-6 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white px-6 py-4 rounded-2xl flex items-center justify-center gap-3 shadow-lg shadow-blue-500/30 font-bold transition-all hover:-translate-y-1 active:scale-95 text-base shrink-0">
+                                                <Save size={20} strokeWidth={3} /> Save Generated Bill
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Consumption Trends Chart Section */}
+                                    {utilCalc.floorId && utilityBills.filter(b => b.type === 'water' && b.floorId === utilCalc.floorId).length > 0 && (
+                                        <div className={`p-8 rounded-[2.5rem] border-2 shadow-xl ${isDark ? 'bg-dark-card border-dark-border' : 'bg-white border-light-border'}`}>
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="p-3 bg-blue-500/10 text-blue-500 rounded-2xl"><BarChart2 size={24} strokeWidth={2.5}/></div>
+                                                    <div>
+                                                        <h3 className="font-black text-xl">Cost Trends</h3>
+                                                        <p className="opacity-50 text-xs font-bold uppercase tracking-widest mt-1">Water base usage costs over time</p>
+                                                    </div>
+                                                </div>
+                                                <span className="px-3 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold text-xs uppercase tracking-widest rounded-lg border border-blue-500/20">{selectedUtilFloorName}</span>
+                                            </div>
+                                            <UtilityConsumptionChart 
+                                                bills={utilityBills.filter(b => b.type === 'water' && b.floorId === utilCalc.floorId)} 
+                                                isDark={isDark} colorTheme="blue"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Generated Bills History */}
+                                    <div className={`rounded-[2rem] border-2 shadow-xl overflow-hidden ${isDark ? 'bg-dark-card border-dark-border' : 'bg-white border-light-border'}`}>
+                                        <div className={`p-6 border-b-2 flex justify-between items-center ${isDark ? 'border-[#272A30]' : 'border-[#E5E7EB]'}`}>
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-xl"><History size={20} strokeWidth={3}/></div>
+                                                <span className="font-black text-xl">Generated Bills History</span>
+                                            </div>
+                                            {utilCalc.floorId && <div className="text-[10px] font-black uppercase tracking-widest opacity-50 px-3 py-1 border rounded-lg dark:border-[#272A30]">Filtered by selected floor</div>}
+                                        </div>
+                                        <div className="overflow-x-auto max-h-[600px] hide-scrollbar">
+                                            <table className="w-full text-left text-sm relative block md:table">
+                                                <thead className={`text-[10px] font-black uppercase tracking-[0.2em] sticky top-0 z-10 backdrop-blur-xl hidden md:table-header-group
+                                                    ${isDark ? 'bg-[#1A1D24]/95 text-dark-muted border-b-2 border-[#272A30]' : 'bg-[#F9FAFB]/95 text-light-muted border-b-2 border-[#E5E7EB]'}`}>
+                                                        <tr>
+                                                            <th className="p-5">Billing Cycle</th>
+                                                            <th className="p-5">Floor</th>
+                                                            <th className="p-5 font-black text-blue-500">Final Bill</th>
+                                                            <th className="p-5 text-emerald-500">Amount Paid</th>
+                                                            <th className="p-5">Status</th>
+                                                            <th className="p-5 text-right">Actions</th>
+                                                        </tr>
+                                                </thead>
+                                                <tbody className="divide-y-2 divide-gray-100 dark:divide-[#272A30] block md:table-row-group">
+                                                    {utilityBills.filter(b => b.type === 'water' && (!utilCalc.floorId || b.floorId === utilCalc.floorId)).length > 0 ? (
+                                                        utilityBills
+                                                        .filter(b => b.type === 'water' && (!utilCalc.floorId || b.floorId === utilCalc.floorId))
+                                                        .sort((a,b) => new Date(b.month) - new Date(a.month))
+                                                        .map(bill => {
+                                                            const floorName = floors.find(f => f.id === bill.floorId)?.name || 'Unknown Floor';
+                                                            const amountPaid = getPaidAmountForBill(bill);
+                                                            const isSettled = amountPaid >= Number(bill.finalBill);
+                                                            const isPartial = amountPaid > 0 && amountPaid < Number(bill.finalBill);
+                                                            
+                                                            const statusConfig = isSettled ? { text: 'SETTLED', style: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400' } :
+                                                                                 isPartial ? { text: 'PARTIALLY PAID', style: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20 dark:text-yellow-400' } :
+                                                                                             { text: 'GENERATED', style: 'bg-gray-500/10 text-gray-600 border-gray-500/20 dark:text-gray-400' };
+
+                                                            const isExpanded = expandedBillId === bill.id;
+
+                                                            return (
+                                                            <React.Fragment key={bill.id}>
+                                                                <tr onClick={() => setExpandedBillId(isExpanded ? null : bill.id)} className={`transition-colors font-medium group block md:table-row p-4 md:p-0 border-b-2 md:border-b-0 cursor-pointer ${isDark ? 'hover:bg-white/5 border-[#272A30]' : 'hover:bg-gray-50 border-[#E5E7EB]'}`}>
+                                                                    <td className="p-2 md:p-5 font-black text-xs flex md:table-cell justify-between items-center"><span className="md:hidden opacity-60 uppercase tracking-widest text-[10px]">Cycle</span> {bill.month}</td>
+                                                                    <td className="p-2 md:p-5 opacity-70 text-xs font-bold uppercase tracking-widest flex md:table-cell justify-between items-center"><span className="md:hidden opacity-60">Floor</span> {floorName}</td>
+                                                                    <td className="p-2 md:p-5 font-black text-blue-500 text-base flex md:table-cell justify-between items-center"><span className="md:hidden opacity-60 uppercase tracking-widest text-[10px]">Final Bill</span> {formatCurrency(bill.finalBill)}</td>
+                                                                    <td className="p-2 md:p-5 font-bold text-emerald-600 dark:text-emerald-400 flex md:table-cell justify-between items-center"><span className="md:hidden opacity-60 uppercase tracking-widest text-[10px]">Amount Paid</span> {formatCurrency(amountPaid)}</td>
+                                                                    <td className="p-2 md:p-5 flex md:table-cell justify-between items-center">
+                                                                        <span className="md:hidden opacity-60 uppercase tracking-widest text-[10px]">Status</span>
+                                                                        <span className={`px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-sm ${statusConfig.style}`}>
+                                                                            {statusConfig.text}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="p-2 md:p-5 text-right flex justify-end items-center gap-3 md:mt-0 pt-3 md:pt-0 border-t md:border-0 border-dashed dark:border-[#272A30]">
+                                                                        <button onClick={(e) => { e.stopPropagation(); requestDeleteUtilityBill(bill.id); }} className="text-red-500 hover:bg-red-500 hover:text-white p-2 rounded-lg transition-all opacity-100 md:opacity-0 group-hover:opacity-100">
+                                                                            <Trash2 size={16} strokeWidth={2.5}/>
+                                                                        </button>
+                                                                        <button className={`p-2 rounded-lg transition-transform ${isExpanded ? 'rotate-180 bg-blue-500/10 text-blue-500' : 'opacity-40 group-hover:opacity-100'}`}>
+                                                                            <ChevronDown size={18} strokeWidth={2.5}/>
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                                {/* Expandable Details Row */}
+                                                                {isExpanded && (
+                                                                    <tr className={`block md:table-row shadow-inner border-b-2 ${isDark ? 'bg-[#121418] border-[#272A30]' : 'bg-blue-50 border-blue-100'}`}>
+                                                                        <td colSpan="6" className="p-6 md:p-8">
+                                                                            <div className="grid grid-cols-2 gap-6 text-sm max-w-lg">
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">Base Bill</p>
+                                                                                    <p className="font-bold">{formatCurrency(bill.baseBill)}</p>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">Carried Forward</p>
+                                                                                    <p className={`font-bold ${Number(bill.previousDues) > 0 ? 'text-red-500' : Number(bill.previousDues) < 0 ? 'text-emerald-500' : 'opacity-70'}`}>
+                                                                                        {formatCurrency(bill.previousDues)}
+                                                                                    </p>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="mt-6 pt-4 border-t-2 border-dashed border-gray-200 dark:border-gray-800 flex justify-between items-center">
+                                                                                <p className="text-xs font-semibold opacity-60">Balance Remaining: <span className={`font-black ml-1 ${!isSettled ? 'text-red-500' : 'text-emerald-500'}`}>{formatCurrency(Number(bill.finalBill) - amountPaid)}</span></p>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                            </React.Fragment>
+                                                        )})
+                                                    ) : (
+                                                        <tr><td colSpan="6" className="p-24 text-center opacity-30 font-black text-xl uppercase tracking-widest block md:table-cell border-t md:border-0 border-dashed dark:border-[#272A30] mt-4">No water bills generated for selected filter</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                     )}
 
@@ -1978,8 +3127,7 @@
                                             key={owner.id} 
                                             style={{ animationDelay: `${index * 50}ms` }}
                                             onClick={() => setSelectedOwner(owner)}
-                                            className={`p-6 rounded-3xl border-2 cursor-pointer flex flex-col justify-between transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl animate-in fade-in slide-in-from-bottom-8 fill-mode-both group 
-                                                ${isDark ? 'bg-dark-card border-dark-border shadow-black/20 hover:border-amber-500/30' : 'bg-white border-light-border shadow-soft hover:border-amber-300'}`}
+                                            className="premium-card p-6 rounded-3xl cursor-pointer flex flex-col justify-between animate-in fade-in slide-in-from-bottom-8 fill-mode-both group hover:-translate-y-1.5 hover:ring-2 hover:ring-amber-500/50 transition-all duration-300"
                                         >
                                             <div>
                                                 <div className="flex justify-between items-start mb-6">
@@ -2145,7 +3293,7 @@
                                     <h3 className="font-black text-xl uppercase tracking-widest flex items-center gap-3 opacity-80">
                                         <Users size={20} className="text-brand-500"/> Vault Members
                                     </h3>
-                                    <button onClick={(e) => handleProtectedAction(e, () => setModalMode('add_bank_user'))} className="text-xs bg-brand-500/10 text-brand-600 dark:text-brand-400 hover:bg-brand-500 hover:text-white px-5 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 font-bold flex items-center gap-2">
+                                    <button onClick={(e) => handleProtectedAction(e, () => setModalMode('add_bank_user'))} className="text-xs bg-brand-500/10 text-brand-600 dark:text-brand-400 hover:bg-brand-50 hover:text-white px-5 py-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 font-bold flex items-center gap-2">
                                         <Plus size={16} strokeWidth={3}/> Add Member
                                     </button>
                                 </div>
@@ -2242,7 +3390,7 @@
                                                     </tr>
                                                 )})
                                             ) : (
-                                                <tr><td colSpan="5" className="p-24 text-center opacity-30 font-black text-xl uppercase tracking-widest block md:table-cell border-t md:border-0 border-dashed dark:border-[#272A30] mt-4">No vault activity</td></tr>
+                                                <tr><td col colSpan="5" className="p-24 text-center opacity-30 font-black text-xl uppercase tracking-widest block md:table-cell border-t md:border-0 border-dashed dark:border-[#272A30] mt-4">No vault activity</td></tr>
                                             )}
                                         </tbody>
                                     </table>
@@ -2365,7 +3513,7 @@
                                     {modalMode === 'details' && (
                                         <>
                                             <div className="relative">
-                                                <button onClick={(e) => handleProtectedAction(e, handleGlobalAddClick)} className="bg-brand-600 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-brand-500/20 hover:bg-brand-500 transition-all active:scale-95 flex items-center gap-2 font-bold text-sm">
+                                                <button onClick={(e) => handleProtectedAction(e, handleGlobalAddClick)} className="bg-brand-600 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-brand-500/20 hover:bg-brand-50 transition-all active:scale-95 flex items-center gap-2 font-bold text-sm">
                                                     <Plus size={18} strokeWidth={3}/> <span className="hidden sm:inline">Log Rent</span>
                                                 </button>
                                                 {showMonthSelector && (
@@ -2375,10 +3523,7 @@
                                                         <div className="max-h-64 overflow-y-auto hide-scrollbar py-2">
                                                             {getMonthsList(selectedYear).filter(m => !records.some(r => r.tenantId === selectedTenant.id && r.month === m)).map(m => (
                                                                 <button key={m} onClick={() => { 
-                                                                    const [mName, yStr] = m.split(' ');
-                                                                    const targetDate = new Date(Number(yStr), new Date(`${mName} 1, 2000`).getMonth(), 1);
-                                                                    setEditingMonth(m); 
-                                                                    setEditRecordState({ ...INITIAL_RECORD_STATE, rent: getRentForDate(selectedTenant, targetDate), date: new Date().toISOString().split('T')[0] }); 
+                                                                    handleEditRow(m, null);
                                                                     setShowMonthSelector(false); 
                                                                 }} className={`w-full text-left px-5 py-3.5 text-sm font-bold transition-colors border-b-2 last:border-0 mx-2 rounded-xl
                                                                     ${isDark ? 'hover:bg-white/5 border-[#272A30]/50' : 'hover:bg-gray-50 border-gray-100'}`}>
@@ -2475,7 +3620,7 @@
                                                 <table className="w-full text-left relative min-w-full md:min-w-[700px] block md:table p-4 md:p-0">
                                                     <thead className={`text-[10px] font-black tracking-[0.2em] uppercase sticky top-0 z-20 backdrop-blur-xl hidden md:table-header-group
                                                         ${isDark ? 'bg-[#1A1D24]/95 text-dark-muted border-b-2 border-[#272A30]' : 'bg-[#F9FAFB]/95 text-light-muted border-b-2 border-[#E5E7EB]'}`}>
-                                                        <tr><th className="p-5">Cycle</th><th className="p-5">Rent</th><th className="p-5">Power</th><th className="p-5">Water</th><th className="p-5">Meter</th><th className="p-5">Channel</th><th className="p-5">Cleared</th><th className="p-5 text-right"></th></tr>
+                                                        <tr><th className="p-5">Cycle</th><th className="p-5">Rent (₹)</th><th className="p-5">Power (₹)</th><th className="p-5">Water (₹)</th><th className="p-5">Meter</th><th className="p-5">Channel</th><th className="p-5">Cleared</th><th className="p-5 text-right"></th></tr>
                                                     </thead>
                                                     <tbody className="divide-y-0 md:divide-y-2 divide-gray-100 dark:divide-[#272A30] block md:table-row-group">
                                                         {getMonthsList(selectedYear).map(month => (
